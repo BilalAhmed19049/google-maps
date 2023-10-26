@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_maps/constants.dart';
@@ -41,20 +42,45 @@ class _GoogleMapsState extends State<GoogleMaps> {
   //     });
   //   }
   // }
+
   LatLng enteredLatLng = LatLng(0, 0);
 
-  void updateMarker() {
+  Future<void> pushCoordinates() async {
     double lat = double.parse(latController.text);
     double lng = double.parse(longController.text);
-    CameraPosition updateposition = CameraPosition(
-      target: LatLng(lat, lng),
-      zoom: 12,
-    );
-    _controller.future.then((controller) {
-      controller.animateCamera(CameraUpdate.newCameraPosition(updateposition));
+    LatLng location = LatLng(lat, lng);
+
+    await FirebaseFirestore.instance.collection('coordinates').add({
+      'latitude': lat,
+      'longitude': lng,
     });
+  }
+
+  List<Marker> markers = [];
+
+  Future<void> fetchLocationFromFirestore() async {
+    print('Getting coordinates from firestore');
+    QuerySnapshot snapshot = await FirebaseFirestore.instance
+        .collection('coordinates')
+        .get(); // Fetch all documents
+
+    List<Marker> newMarkers = [];
+
+    for (QueryDocumentSnapshot doc in snapshot.docs) {
+      double lat = doc['latitude'];
+      double lng = doc['longitude'];
+
+      // Create a marker for each coordinate
+      Marker marker = Marker(
+        markerId: MarkerId(doc.id), // Use the document ID as the marker ID
+        position: LatLng(lat, lng),
+        icon: BitmapDescriptor.defaultMarker,
+      );
+
+      newMarkers.add(marker); // Add the marker to the list
+    }
     setState(() {
-      enteredLatLng = LatLng(lat, lng);
+      markers = newMarkers; // Update the list of markers
     });
   }
 
@@ -93,6 +119,7 @@ class _GoogleMapsState extends State<GoogleMaps> {
   @override
   void initState() {
     //getPolyPoints();
+    enteredLatLng = const LatLng(31.5222927, 74.4364741);
     super.initState();
   }
 
@@ -108,35 +135,54 @@ class _GoogleMapsState extends State<GoogleMaps> {
         padding: const EdgeInsets.all(defaultPadding),
         child: Column(
           children: [
-            // TextFormField(
-            //   decoration: const InputDecoration(
-            //       labelText: 'Enter Latitude',
-            //       border: OutlineInputBorder(
-            //         borderSide: BorderSide(
-            //           width: 3,
-            //           color: Colors.black,
-            //         ),
-            //       )),
-            //   controller: latController,
-            // ),
-            // SizedBox(
-            //   height: 5,
-            // ),
-            // TextFormField(
-            //   decoration: const InputDecoration(
-            //       labelText: 'Enter Longitude',
-            //       border: OutlineInputBorder(
-            //         borderSide: BorderSide(
-            //           width: 3,
-            //           color: Colors.black,
-            //         ),
-            //       )),
-            //   controller: longController,
-            // ),
-            Text(placeMark),
-            // ElevatedButton(
-            //     onPressed: updateMarker, child: Text('Update marker')),
-
+            TextFormField(
+              decoration: const InputDecoration(
+                  labelText: 'Enter Latitude',
+                  border: OutlineInputBorder(
+                    borderSide: BorderSide(
+                      width: 3,
+                      color: Colors.black,
+                    ),
+                  )),
+              controller: latController,
+            ),
+            SizedBox(
+              height: 5,
+            ),
+            TextFormField(
+              decoration: const InputDecoration(
+                  labelText: 'Enter Longitude',
+                  border: OutlineInputBorder(
+                    borderSide: BorderSide(
+                      width: 3,
+                      color: Colors.black,
+                    ),
+                  )),
+              controller: longController,
+            ),
+            Container(
+              height: 50,
+              width: double.infinity,
+              child: Text(placeMark),
+              decoration: BoxDecoration(
+                  border: Border.all(
+                color: Colors.black38,
+                width: 2,
+              )),
+            ),
+            Row(
+              children: [
+                ElevatedButton(
+                    onPressed: pushCoordinates,
+                    child: Text('push coordinates')),
+                ElevatedButton(
+                  onPressed: () {
+                    fetchLocationFromFirestore();
+                  },
+                  child: Text('Get coordinates'),
+                )
+              ],
+            ),
             Expanded(
               child: GoogleMap(
                 initialCameraPosition: const CameraPosition(
@@ -146,6 +192,7 @@ class _GoogleMapsState extends State<GoogleMaps> {
                 onMapCreated: (GoogleMapController controller) {
                   _controller.complete(controller);
                 },
+
                 // polylines: {
                 //   Polyline(
                 //     polylineId: PolylineId('route'),
@@ -157,13 +204,7 @@ class _GoogleMapsState extends State<GoogleMaps> {
                 onCameraMove: onCameraMove,
                 onCameraIdle: onCameraIdle,
 
-                markers: {
-                  Marker(
-                    markerId: MarkerId('Entered Location'),
-                    position: enteredLatLng,
-                    icon: BitmapDescriptor.defaultMarker,
-                  )
-                },
+                markers: Set<Marker>.of(markers),
               ),
             ),
           ],
